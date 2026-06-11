@@ -1305,23 +1305,20 @@ public class SVGOutputFormat implements OutputFormat {
         for (Figure f : figures) {
             writeElement(document, f);
         }
-        // Write XML prolog
-        PrintWriter writer = new PrintWriter(
-                new OutputStreamWriter(out, "UTF-8"));
-        writer.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         // Write XML content
         Transformer t;
         try {
             t = TransformerFactory.newInstance().newTransformer();
+            t.setOutputProperty(OutputKeys.METHOD, "xml");
+            t.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
             if (isPrettyPrint) {
                 t.setOutputProperty(OutputKeys.INDENT, "yes");
             }
             t.transform(new DOMSource(document), new StreamResult(out));
         } catch (TransformerException ex) {
             Logger.getLogger(SVGOutputFormat.class.getName()).log(Level.SEVERE, null, ex);
+            throw new IOException(ex);
         }
-        // Flush writer
-        writer.flush();
     }
 
     private void initStorageContext(Element root) {
