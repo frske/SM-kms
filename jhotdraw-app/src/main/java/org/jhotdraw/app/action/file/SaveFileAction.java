@@ -25,7 +25,6 @@ import org.jhotdraw.api.app.View;
 import org.jhotdraw.api.gui.URIChooser;
 import org.jhotdraw.gui.JSheet;
 import org.jhotdraw.gui.event.SheetEvent;
-import org.jhotdraw.gui.event.SheetListener;
 import org.jhotdraw.net.URIUtil;
 import org.jhotdraw.util.ResourceBundleUtil;
 
@@ -62,6 +61,7 @@ import org.jhotdraw.util.ResourceBundleUtil;
 public class SaveFileAction extends AbstractViewAction {
 
     private static final long serialVersionUID = 1L;
+    private static final String LABELS_BUNDLE = "org.jhotdraw.app.Labels";
     public static final String ID = "file.save";
     private boolean saveAs;
     private Component oldFocusOwner;
@@ -79,8 +79,7 @@ public class SaveFileAction extends AbstractViewAction {
     public SaveFileAction(Application app, View view, boolean saveAs) {
         super(app, view);
         this.saveAs = saveAs;
-        ResourceBundleUtil labels = ResourceBundleUtil.getBundle("org.jhotdraw.app.Labels");
-        labels.configureAction(this, ID);
+        getLabels().configureAction(this, ID);
     }
 
     protected URIChooser getChooser(View view) {
@@ -95,50 +94,65 @@ public class SaveFileAction extends AbstractViewAction {
     @Override
     public void actionPerformed(ActionEvent evt) {
         final View view = getActiveView();
-        if (view == null) {
+        if (view == null || !view.isEnabled()) {
             return;
         }
-        if (view.isEnabled()) {
-            oldFocusOwner = SwingUtilities.getWindowAncestor(view.getComponent()).getFocusOwner();
-            view.setEnabled(false);
-            if (!saveAs && view.getURI() != null && view.canSaveTo(view.getURI())) {
-                saveViewToURI(view, view.getURI(), null);
-            } else {
-                URIChooser fileChooser = getChooser(view);
-                JSheet.showSaveSheet(fileChooser, view.getComponent(), new SheetListener() {
-                    @Override
-                    public void optionSelected(final SheetEvent evt) {
-                        if (evt.getOption() == JFileChooser.APPROVE_OPTION) {
-                            final URI uri = evt.getChooser().getSelectedURI();
-                            // Prevent same URI from being opened more than once
-                            if (!getApplication().getModel().isAllowMultipleViewsPerURI()) {
-                                for (View v : getApplication().getViews()) {
-                                    if (v != view && v.getURI() != null && v.getURI().equals(uri)) {
-                                        ResourceBundleUtil labels = ResourceBundleUtil.getBundle("org.jhotdraw.app.Labels");
-                                        JSheet.showMessageSheet(view.getComponent(), labels.getFormatted("file.saveAs.couldntSaveIntoOpenFile.message", evt.getFileChooser().getSelectedFile().getName()));
-                                        view.setEnabled(true);
-                                        return;
-                                    }
-                                }
-                            }
-                            saveViewToURI(view, uri, evt.getChooser());
-                        } else {
-                            view.setEnabled(true);
-                            if (oldFocusOwner != null) {
-                                oldFocusOwner.requestFocus();
-                            }
-                        }
-                    }
-                });
+
+        oldFocusOwner = SwingUtilities.getWindowAncestor(view.getComponent()).getFocusOwner();
+        view.setEnabled(false);
+        if (canSaveDirectly(view)) {
+            saveViewToURI(view, view.getURI(), null);
+        } else {
+            showSaveSheet(view);
+        }
+    }
+
+    private boolean canSaveDirectly(View view) {
+        return !saveAs && view.getURI() != null && view.canSaveTo(view.getURI());
+    }
+
+    private void showSaveSheet(final View view) {
+        URIChooser fileChooser = getChooser(view);
+        JSheet.showSaveSheet(fileChooser, view.getComponent(), evt -> saveSheetOptionSelected(view, evt));
+    }
+
+    private void saveSheetOptionSelected(final View view, final SheetEvent evt) {
+        if (evt.getOption() != JFileChooser.APPROVE_OPTION) {
+            view.setEnabled(true);
+            restoreFocus();
+            return;
+        }
+
+        final URI uri = evt.getChooser().getSelectedURI();
+        if (isAlreadyOpenInAnotherView(view, uri)) {
+            JSheet.showMessageSheet(view.getComponent(), getLabels().getFormatted(
+                    "file.saveAs.couldntSaveIntoOpenFile.message",
+                    evt.getFileChooser().getSelectedFile().getName()));
+            view.setEnabled(true);
+            return;
+        }
+
+        saveViewToURI(view, uri, evt.getChooser());
+    }
+
+    private boolean isAlreadyOpenInAnotherView(View view, URI uri) {
+        if (getApplication().getModel().isAllowMultipleViewsPerURI()) {
+            return false;
+        }
+
+        for (View v : getApplication().getViews()) {
+            if (v != view && v.getURI() != null && v.getURI().equals(uri)) {
+                return true;
             }
         }
+        return false;
     }
 
     protected void saveViewToURI(final View view, final URI file,
             final URIChooser chooser) {
-        new SwingWorker() {
+        new SwingWorker<Void, Void>() {
             @Override
-            protected Object doInBackground() throws Exception {
+            protected Void doInBackground() throws Exception {
                 view.write(file, chooser);
                 return null;
             }
@@ -157,31 +171,43 @@ public class SaveFileAction extends AbstractViewAction {
                     }
                     getApplication().addRecentURI(file);
                     view.setMultipleOpenId(multiOpenId);
-                } catch (InterruptedException | ExecutionException ex) {
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                     Logger.getLogger(SaveFileAction.class.getName()).log(Level.SEVERE, null, ex);
-                    failed(ex);
+                    failed(view, file, ex);
+                } catch (ExecutionException ex) {
+                    Logger.getLogger(SaveFileAction.class.getName()).log(Level.SEVERE, null, ex);
+                    failed(view, file, ex);
                 }
-                finished();
+                finished(view);
             }
-           
-            protected void failed(Throwable value) {
+            
+            protected void failed(View view, URI file, Throwable value) {
                 value.printStackTrace();
                 String message = value.getMessage() != null ? value.getMessage() : value.toString();
-                ResourceBundleUtil labels = ResourceBundleUtil.getBundle("org.jhotdraw.app.Labels");
-                JSheet.showMessageSheet(getActiveView().getComponent(),
+                ResourceBundleUtil labels = getLabels();
+                JSheet.showMessageSheet(view.getComponent(),
                         "<html>" + UIManager.getString("OptionPane.css")
                         + "<b>" + labels.getFormatted("file.save.couldntSave.message", URIUtil.getName(file)) + "</b><p>"
                         + ((message == null) ? "" : message),
                         JOptionPane.ERROR_MESSAGE);
             }
-
-            protected void finished() {
-                view.setEnabled(true);
-                SwingUtilities.getWindowAncestor(view.getComponent()).toFront();
-                if (oldFocusOwner != null) {
-                    oldFocusOwner.requestFocus();
-                }
-            }
         }.execute();
+    }
+
+    protected void finished(View view) {
+        view.setEnabled(true);
+        SwingUtilities.getWindowAncestor(view.getComponent()).toFront();
+        restoreFocus();
+    }
+
+    private void restoreFocus() {
+        if (oldFocusOwner != null) {
+            oldFocusOwner.requestFocus();
+        }
+    }
+
+    private static ResourceBundleUtil getLabels() {
+        return ResourceBundleUtil.getBundle(LABELS_BUNDLE);
     }
 }
