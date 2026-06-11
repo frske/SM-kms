@@ -9,6 +9,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 public class SVGApplicationModelTest {
 
@@ -49,6 +50,38 @@ public class SVGApplicationModelTest {
 
         assert selectedURI != null : "save chooser must return a URI for a selected SVGZ file";
         assertEquals(selectedFile.toURI(), selectedURI);
+    }
+
+    @Test
+    public void fileNamingStrategyAddsSVGExtensionWhenFilenameHasNoExtension() {
+        File selectedFile = new File(folder.getRoot(), "drawing");
+
+        URI selectedURI = SVGFileNamingStrategy.appendSVGExtension(selectedFile.toURI());
+
+        assertEquals(new File(folder.getRoot(), "drawing.svg").toURI(), selectedURI);
+    }
+
+    @Test
+    public void fileNamingStrategyKeepsSVGExtensionsCaseInsensitive() {
+        File selectedFile = new File(folder.getRoot(), "drawing.SVG");
+
+        URI selectedURI = SVGFileNamingStrategy.appendSVGExtension(selectedFile.toURI());
+
+        assertEquals(selectedFile.toURI(), selectedURI);
+    }
+
+    @Test
+    public void fileNamingStrategyKeepsSVGZExtensionsCaseInsensitive() {
+        File selectedFile = new File(folder.getRoot(), "drawing.SVGZ");
+
+        URI selectedURI = SVGFileNamingStrategy.appendSVGExtension(selectedFile.toURI());
+
+        assertEquals(selectedFile.toURI(), selectedURI);
+    }
+
+    @Test
+    public void fileNamingStrategyKeepsNullURI() {
+        assertNull(SVGFileNamingStrategy.appendSVGExtension(null));
     }
 
     private JFileURIChooser createSaveChooser() {

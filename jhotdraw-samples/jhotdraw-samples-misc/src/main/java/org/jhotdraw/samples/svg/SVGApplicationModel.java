@@ -7,10 +7,9 @@
  */
 package org.jhotdraw.samples.svg;
 
-import java.io.File;
-import java.net.URI;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.net.URI;
 import java.util.*;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
@@ -216,7 +215,7 @@ public class SVGApplicationModel extends DefaultApplicationModel {
         JFileURIChooser c = new JFileURIChooser() {
             @Override
             public URI getSelectedURI() {
-                return appendSVGExtension(super.getSelectedURI());
+                return SVGFileNamingStrategy.appendSVGExtension(super.getSelectedURI());
             }
         };
         c.putClientProperty(OUTPUT_FORMAT_MAP_CLIENT_PROPERTY, fileFilterOutputFormatMap);
@@ -231,19 +230,6 @@ public class SVGApplicationModel extends DefaultApplicationModel {
             break; // only add the first uri filter
         }
         return c;
-    }
-
-    private static URI appendSVGExtension(URI uri) {
-        if (uri == null) {
-            return uri;
-        }
-        File file = new File(uri);
-        String path = file.getPath();
-        String lowerPath = path.toLowerCase(Locale.ENGLISH);
-        if (lowerPath.endsWith(".svg") || lowerPath.endsWith(".svgz")) {
-            return uri;
-        }
-        return new File(path + ".svg").toURI();
     }
 
     @Override
