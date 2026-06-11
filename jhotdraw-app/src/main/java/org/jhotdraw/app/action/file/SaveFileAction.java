@@ -129,6 +129,7 @@ public class SaveFileAction extends AbstractViewAction {
                     "file.saveAs.couldntSaveIntoOpenFile.message",
                     evt.getFileChooser().getSelectedFile().getName()));
             view.setEnabled(true);
+            restoreFocus();
             return;
         }
 
@@ -178,8 +179,9 @@ public class SaveFileAction extends AbstractViewAction {
                 } catch (ExecutionException ex) {
                     Logger.getLogger(SaveFileAction.class.getName()).log(Level.SEVERE, null, ex);
                     failed(view, file, ex);
+                } finally {
+                    finished(view);
                 }
-                finished(view);
             }
             
             protected void failed(View view, URI file, Throwable value) {
